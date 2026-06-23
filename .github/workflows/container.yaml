@@ -55,11 +55,12 @@ jobs:
           sg docker -c 'docker push "${{ steps.meta.outputs.tag_main }}"'
 
       - name: Make package public
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh api \
-            --method PATCH \
-            "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/test-probe/visibility" \
-            -f visibility=public
+          curl --fail-with-body \
+            --request PATCH \
+            --header "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --url "https://api.github.com/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/test-probe/visibility" \
+            --data '{"visibility":"public"}'
