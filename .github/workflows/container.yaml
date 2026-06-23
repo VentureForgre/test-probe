@@ -1,0 +1,49 @@
+name: container
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - app/**
+      - Dockerfile
+      - nginx.conf
+      - .dockerignore
+      - .github/workflows/container.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: arc-runner-set
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image metadata
+        id: meta
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/test-probe"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "tag_sha=$image:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag_main=$image:main" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tag_sha }}
+            ${{ steps.meta.outputs.tag_main }}

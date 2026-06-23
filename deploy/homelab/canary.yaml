@@ -1,0 +1,31 @@
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: test-probe
+  namespace: test-probe
+spec:
+  provider: traefik
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: test-probe
+  progressDeadlineSeconds: 120
+  service:
+    port: 80
+    targetPort: http
+  analysis:
+    interval: 30s
+    threshold: 2
+    iterations: 1
+    match:
+      - headers:
+          x-canary:
+            exact: always
+    webhooks:
+      - name: load-test
+        type: rollout
+        url: http://flagger-loadtester.flagger-system/
+        timeout: 5s
+        metadata:
+          type: cmd
+          cmd: hey -z 30s -q 5 -c 2 http://test-probe-canary.test-probe/

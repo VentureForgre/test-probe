@@ -1,0 +1,15 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: test-probe
+  namespace: test-probe
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`test-probe.app.sullylab.de`)
+      kind: Rule
+      services:
+        - name: test-probe
+          kind: TraefikService
+          port: 80
