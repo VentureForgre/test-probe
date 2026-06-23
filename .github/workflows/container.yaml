@@ -53,3 +53,13 @@ jobs:
         run: |
           sg docker -c 'docker push "${{ steps.meta.outputs.tag_sha }}"'
           sg docker -c 'docker push "${{ steps.meta.outputs.tag_main }}"'
+
+      - name: Make package public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh api \
+            --method PATCH \
+            "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/test-probe/visibility" \
+            -f visibility=public
