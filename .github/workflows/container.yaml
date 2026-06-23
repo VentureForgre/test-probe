@@ -36,20 +36,70 @@ jobs:
           echo "tag_sha=$image:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "tag_main=$image:main" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
-        shell: bash
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      - name: Build
+      - name: Build and push in cluster
         shell: bash
         run: |
-          docker build \
-            --tag "${{ steps.meta.outputs.tag_sha }}" \
-            --tag "${{ steps.meta.outputs.tag_main }}" \
-            .
+          set -euo pipefail
 
-      - name: Push
-        shell: bash
-        run: |
-          docker push "${{ steps.meta.outputs.tag_sha }}"
-          docker push "${{ steps.meta.outputs.tag_main }}"
+          namespace="github-builds"
+          job="test-probe-build-${GITHUB_RUN_ID}"
+
+          kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
+
+          docker_auth="$(printf '%s:%s' '${{ github.actor }}' '${{ secrets.GITHUB_TOKEN }}' | base64 -w0)"
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "$job-ghcr"
+            namespace: "$namespace"
+          type: kubernetes.io/dockerconfigjson
+          stringData:
+            .dockerconfigjson: |
+              {"auths":{"ghcr.io":{"auth":"$docker_auth"}}}
+          ---
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: "$job"
+            namespace: "$namespace"
+          spec:
+            ttlSecondsAfterFinished: 300
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: kaniko
+                    image: gcr.io/kaniko-project/executor:v1.24.0
+                    args:
+                      - --context=git://github.com/${GITHUB_REPOSITORY}.git#refs/heads/main#${GITHUB_SHA}
+                      - --dockerfile=Dockerfile
+                      - --destination=${{ steps.meta.outputs.tag_sha }}
+                      - --destination=${{ steps.meta.outputs.tag_main }}
+                    volumeMounts:
+                      - name: docker-config
+                        mountPath: /kaniko/.docker
+                    resources:
+                      requests:
+                        cpu: 250m
+                        memory: 512Mi
+                      limits:
+                        memory: 1Gi
+                volumes:
+                  - name: docker-config
+                    secret:
+                      secretName: "$job-ghcr"
+                      items:
+                        - key: .dockerconfigjson
+                          path: config.json
+          EOF
+
+          kubectl -n "$namespace" wait --for=condition=complete "job/$job" --timeout=10m || {
+            kubectl -n "$namespace" logs "job/$job"
+            exit 1
+          }
+
+          kubectl -n "$namespace" logs "job/$job"
+          kubectl -n "$namespace" delete job "$job" --ignore-not-found=true
+          kubectl -n "$namespace" delete secret "$job-ghcr" --ignore-not-found=true
