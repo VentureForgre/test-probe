@@ -7,7 +7,7 @@ spec:
   entryPoints:
     - web
   routes:
-    - match: Host(`test-probe.app.sullylab.de`)
+    - match: Host(`test-probe.app.sullylab.de`) || Host(`test-probe.sullylab.de`)
       kind: Rule
       services:
         - name: test-probe
